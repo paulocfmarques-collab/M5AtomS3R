@@ -5,6 +5,7 @@
 #include <Preferences.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <errno.h>
 #include "SDUtil.h"
 
 namespace C6NetworkConfig
@@ -69,6 +70,10 @@ class ESP32Gateway
     WebServer server{80};
     MetricsService metrics;
     WiFiUDP udp;
+    IPAddress udpReplyIP;
+    uint16_t udpReplyPort = 0;
+    bool udpReady = false;
+    uint32_t udpReceived = 0, udpSent = 0, udpSendErrors = 0, udpRecoveries = 0;
     Preferences prefs;
     NetworkMonitor telemetry;
     static const int MAX_REDES = 5;
@@ -81,6 +86,7 @@ class ESP32Gateway
     uint32_t historyPingAt = 0;
     bool historyEnabled = true, historyFailed = false;
     uint32_t historyNextTry = 0;
+    String deviceName = "M5AtomS3";
 
     void carregarRedes(String names[5], String pass[5], int& idx)
     {
@@ -365,6 +371,8 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
     }
 
   public:
+    bool resetCounters() { return metrics.resetCounters(); }
+
     void begin()
     {
         carregarRedes(ssids, passwords, lastUsed);
@@ -484,6 +492,7 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
                     WiFi.softAPdisconnect(false);
                     apActive = false;
                 }
+                iniciarUDP(); // Rebind after STA reconnect/AP shutdown.
             }
             return;
         }
@@ -493,6 +502,7 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
             phase = 0;
             display.println("WiFi desconectado");
             openAP();
+            iniciarUDP(); // Keep the command port bound on the fallback AP.
         }
         if (phase == 0)
         {
@@ -556,7 +566,9 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
 
     void iniciarUDP()
     {
-        udp.begin(C6NetworkConfig::UDP_PORT);
+        udp.stop();
+        udpReady = udp.begin(C6NetworkConfig::UDP_PORT) != 0;
+        if (!udpReady) Serial.println("[UDP] Falha ao abrir porta 4210");
     }
 
     void iniciarPortal()
@@ -575,11 +587,33 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
 
     void responderUDP(const String& s)
     {
-        if (!udp.remoteIP())
+        if (!udpReplyIP || !udpReplyPort)
             return;
-        udp.beginPacket(udp.remoteIP(), udp.remotePort());
-        udp.print(s);
-        udp.endPacket();
+        // Explicit chunks avoid NetworkUDP's unchecked implicit flush above 1460 bytes.
+        constexpr size_t chunkSize = 1200;
+        for (size_t offset = 0; offset < s.length(); offset += chunkSize) {
+            const size_t length = min(chunkSize, s.length() - offset);
+            bool sent = false;
+            for (uint8_t attempt = 0; attempt < 2 && !sent; ++attempt) {
+                if (!udpReady) iniciarUDP();
+                if (udpReady && udp.beginPacket(udpReplyIP, udpReplyPort)) {
+                    const size_t written = udp.write(
+                        reinterpret_cast<const uint8_t*>(s.c_str() + offset), length);
+                    sent = written == length && udp.endPacket() == 1;
+                }
+                if (!sent) {
+                    const int socketError = errno;
+                    ++udpSendErrors;
+                    Serial.printf("[UDP] Falha TX para %s:%u, bloco %u, tentativa %u, errno=%d\n",
+                                  udpReplyIP.toString().c_str(), udpReplyPort,
+                                  unsigned(offset / chunkSize), unsigned(attempt + 1), socketError);
+                    udp.stop(); udpReady = false;
+                    if (attempt == 0) { ++udpRecoveries; delay(2); }
+                }
+            }
+            if (!sent) return;
+            ++udpSent;
+        }
     }
 
     void responderUDPPrintf(const char* format, ...)
@@ -594,9 +628,20 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
 
     bool checarMensagensUDP(String& s)
     {
+        if (!udpReady) {
+            // Rate-limit bind retries if network resources are temporarily exhausted.
+            static uint32_t lastBindAttempt = 0;
+            if (millis() - lastBindAttempt < 1000) return false;
+            lastBindAttempt = millis();
+            iniciarUDP();
+            if (!udpReady) return false;
+        }
         int n = udp.parsePacket();
         if (!n)
             return false;
+        udpReplyIP = udp.remoteIP();
+        udpReplyPort = udp.remotePort();
+        ++udpReceived;
         char buf[256];
         if (n >= int(sizeof(buf)))
         {
@@ -685,6 +730,8 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
             s += "\nRTT min/medio/max: " + String(m.minimum) + "/" +
                  String((unsigned long)(m.totalRtt / m.received)) + "/" + String(m.maximum) + " ms";
         s += "\nPings: " + String(m.attempts) + " | Sem resposta: " + String(m.failures) + "\n";
+        s += "UDP RX: " + String(udpReceived) + " | TX blocos: " + String(udpSent) +
+             " | Falhas TX: " + String(udpSendErrors) + " | Recuperacoes: " + String(udpRecoveries) + "\n";
         for (const auto& e : m.events)
             if (e.length())
                 s += e + "\n";
@@ -778,5 +825,10 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
             cursor = newNext;
         }
         return ok;
+    }
+
+    String getDeviceName() const
+    {
+        return deviceName;
     }
 };

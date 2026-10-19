@@ -1,8 +1,95 @@
 # Histórico de alterações — AtomS3R Gateway
 
-## 2026-10-17 — Estado atual
+## 2026-10-19 — Temperatura e umidade de Porto Alegre no Prometheus
+
+- Adicionada consulta de `relative_humidity_2m` no Open-Meteo e armazenamento no cache protegido entre núcleos, com validação de 0 a 100%.
+- Exportadas `sensor_temperature_celsius` e `sensor_humidity_percent` com `source="open_meteo"` e `location="porto_alegre"`; séries omitidas antes de uma leitura válida.
+- Preservado `esp_info{model="M5Stack-AtomS3R"}` para o filtro `and on(instance, job)` do dashboard.
+- Intervalo de clima mantido em 15 minutos, sem chamadas de API durante o scrape.
+- Criado PROMETHEUS.md com as consultas solicitadas e os limites do cache. Compilação e verificação no servidor ficam com o usuário.
+
+## 2026-10-19 — Recuperação das respostas UDP
+
+- Endereço e porta do remetente capturados na recepção, preservados durante o processamento e uma eventual recuperação do socket.
+- Verificados os resultados de abertura do pacote, escrita e envio; falhas geram diagnóstico serial com destino e errno.
+- Em falha de envio, socket fechado e reaberto na porta 4210, com uma única repetição do bloco; o comando não é executado novamente.
+- Socket reaberto ao reconectar a STA/fechar o AP e ao voltar ao AP após perda de conexão.
+- Respostas longas divididas explicitamente em datagramas de até 1200 bytes, evitando o envio automático sem verificação da biblioteca.
+- `net_monitor` e relatório web incluem contadores de recepção, blocos enviados, falhas e tentativas de recuperação.
+- Causa do problema após longo tempo ligado ainda depende de confirmação física. Compilação e teste prolongado ficam com o usuário.
+
+## 2026-10-31 — Reset dos contadores NVS
+
+- Adicionado `reset_counters` ao menu e ao processamento UDP/Serial; zera
+  apenas os contadores de boot/watchdog e preserva as configurações Prometheus.
+- Guia local e catálogo consolidado atualizados.
+
+## 2026-10-18 — Comando de rotação do display
+
+- Adicionado `rotacao:0|90|180|270` ao serial, UDP e help, com validação estrita dos quatro ângulos.
+- Orientação absoluta aplicada a páginas, console, carinha e barra OTA; o acelerômetro acompanha a rotação efetiva.
+- Removidos os resets de orientação na inicialização do sketch e antes dos comandos. O driver mantém 180° como padrão de boot; a escolha não é persistida após reiniciar.
+- Documentação atualizada; compilação e teste físico ficam com o usuário.
+
+## 2026-10-18 — Boca e expressões no protetor
+
+- Adicionadas boca e sobrancelhas ciano, com expressões feliz, curiosa, surpresa e sonolenta.
+- Expressões alternam a cada 3,5 a 6,5 segundos, sem repetir a anterior; pálpebras transitam suavemente.
+- Movimento forte detectado pelo acelerômetro provoca surpresa por cerca de dois segundos, com intervalo mínimo de quatro segundos entre reações.
+- Mantidos olhos ciano, olhar pelo acelerômetro, piscadas, orientação de 180° e desenho em buffer sem limpeza direta do LCD.
+- Elementos distribuídos em 128 × 128 pixels, com boca abaixo dos olhos.
+- Compilação e teste visual na placa ficam com o usuário.
+
+## 2026-10-18 — Tela girada em 180°
+
+- Aplicada a orientação de 180° desde a inicialização, preservada ao receber comandos e durante a OTA.
+- Relógio, páginas, console e olhos seguem a mesma orientação. O mapeamento do acelerômetro já considera a rotação efetiva do display.
+- Compilação e teste na placa ficam com o usuário.
+
+## 2026-10-18 — Barra de progresso OTA
+
+- Adicionada barra ciano com porcentagem na tela durante a gravação OTA.
+- Atualização pelo buffer, sem limpar diretamente o LCD, em avanços de pelo menos 5 pontos percentuais e intervalo mínimo de 250 ms; 100% é exibido imediatamente.
+- Indicados os estados de gravação, verificação, conclusão e código de erro.
+- Mantidas as otimizações de prioridade e os logs de tempo/taxa no serial.
+- Documentação atualizada; compilação e teste na placa ficam com o usuário.
+
+## Revisão documental consolidada — 2026-10-18
+
+- Documentado `name`, que retorna o nome configurado no dispositivo.
+- Catálogo geral corrigido: RGB pelo LP5562 está implementado; somente SD
+  e histórico de rede em cartão permanecem indisponíveis.
+- Guia local detalha rejeição de entradas acima de 255 bytes, efeitos de
+  `reset_wifi`, intervalo de alternância do LED e limites de OTA/core dump.
+- Alterações de navegação e clima abaixo preservadas e identificadas pelo
+  commit `5c56bcf` no [histórico ESP32](../../ESP32_Documents/changelog.md).
+- Nenhuma alteração de firmware ou validação física nesta revisão documental.
+
+## 2026-10-18 — Navegação e retorno ao relógio
+
+- Clima configurado com intervalo automático fixo de 15 minutos, inclusive após falhas; primeira consulta ao conectar e atualização manual por `clima_sync` preservadas.
+- Atualizados e consolidados LEIA-ME.md, comandos.md e changelog.md, incluindo navegação, temporizadores, olhos com acelerômetro, RGB e OTA.
+
+- Cada toque curto avança uma página, com debounce e uma única troca ao soltar.
+- Sequência do botão: relógio, NTP, rede, sistema, redes salvas, monitor e previsão. Páginas duplicadas e o aviso de SD são pulados.
+- Após 20 segundos sem novo toque, retorna ao relógio. Segurar o botão não dispara esse retorno.
+- Navegação por `tela:N` ou `tela_next` também inicia o prazo de 20 segundos; a numeração dos comandos foi preservada.
+- Retorno automático não reinicia o contador do protetor de olhos, que continua com 60 segundos de inatividade.
+- Compilação e teste na placa ficam com o usuário.
+
+## 2026-10-17 — Adaptação inicial e melhorias
 
 Registro das alterações realizadas nesta adaptação. Não foram atribuídos números de versão ou tags de release; o comando `version` continua usando a identificação calculada pelo firmware.
+
+### Olhos controlados pelo acelerometro
+
+- Habilitada a IMU interna pelo M5Unified, usando o acelerometro BMI270 para mover as iris ciano.
+- Posicao neutra definida ao entrar no protetor; movimentos relativos a essa posicao controlam o olhar.
+- Eixos adaptados a rotacao do display, com filtragem suave, zona morta contra pequenas vibracoes e limites para manter as iris nos olhos.
+- Leitura limitada aos quadros do protetor (aproximadamente 30 Hz), sem tarefa adicional ou espera bloqueante.
+- Piscadas preservadas; movimento automatico usado se a IMU estiver indisponivel ou sem leituras validas por mais de um segundo.
+- Movimento nao encerra o protetor; botao ou comando continua retornando as paginas normais.
+- API conferida na biblioteca instalada; compilacao e teste fisico ficam com o usuario.
 
 ### Prioridade para gravacao OTA
 
@@ -10,7 +97,7 @@ Registro das alterações realizadas nesta adaptação. Não foram atribuídos n
 - Wi-Fi sem economia de energia enquanto a OTA esta disponivel.
 - CPU em 240 MHz e prioridade da tarefa elevada para pelo menos 2 durante a transferencia, com restauracao no fim ou erro.
 - Novas consultas de clima impedidas durante a OTA. Uma consulta que ja estava em andamento pode concluir normalmente.
-- Progresso no serial limitado a passos de aproximadamente 10%, sem desenhos de progresso durante a gravacao.
+- Progresso no serial limitado a passos de aproximadamente 10%, inicialmente sem desenhos durante a gravacao; barra adicionada na revisao de 18/10/2026.
 - Log final com bytes transferidos, duracao e taxa media em KiB/s. Integridade e troca de particao continuam a cargo de ArduinoOTA/Update.
 - Ganho de velocidade ainda nao medido na placa; compilacao e gravacao ficam com o usuario.
 
@@ -33,7 +120,7 @@ Registro das alterações realizadas nesta adaptação. Não foram atribuídos n
 
 ### Protetor de tela
 
-- Adicionados dois olhos coloridos: ciano e magenta.
+- Adicionados inicialmente olhos ciano e magenta; ambos foram alterados para ciano na revisão de layout.
 - Movimento suave do olhar, com novos destinos e piscadas em intervalos variáveis.
 - Ativação após 60 segundos sem interação e saída por botão ou comando.
 - Animação no mesmo buffer da interface, sem limpar o LCD entre quadros.
@@ -81,4 +168,4 @@ Registro das alterações realizadas nesta adaptação. Não foram atribuídos n
 - Documentação conferida com o processamento de comandos e os fontes atuais.
 - Compilação e gravação ficam com o usuário, conforme solicitado; não há confirmação de compilação completa desta revisão nem de teste físico das alterações mais recentes.
 - O usuário forneceu log de inicialização que confirma a tarefa principal no núcleo 1; as revisões posteriores de tela e animação ainda dependem de verificação na placa.
-- IMU e magnetômetro não foram integrados. Não há armazenamento de logs em microSD.
+- Acelerometro integrado ao protetor; giroscopio e magnetometro ainda nao sao utilizados. Não há armazenamento de logs em microSD.

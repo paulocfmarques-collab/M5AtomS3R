@@ -10,6 +10,7 @@
 struct ClimaSnapshot
 {
     float temperatura = 0, minima = 0, maxima = 0;
+    float umidade = NAN;
     int codigoCondicao = 0, chuva = 0;
     bool sincronizado = false, previsaoValida = false, ultimaFalhou = false;
     uint32_t ultimaAtualizacao = 0, previsaoAtualizada = 0;
@@ -59,7 +60,7 @@ class ClimaManager
     static void worker(void*)
     {
         Snapshot next = snapshot();
-        bool currentOk = false, dailyOk = false;
+        bool currentOk = false, dailyOk = false, humidityOk = false;
         NetworkClientSecure client;
         client.setInsecure();
         HTTPClient http;
@@ -68,7 +69,7 @@ class ClimaManager
         http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
         const char* url = "https://api.open-meteo.com/v1/"
                           "forecast?latitude=-30.03&longitude=-51.23&current=temperature_2m,"
-                          "weather_code&daily=temperature_2m_min,temperature_2m_max,precipitation_"
+                          "relative_humidity_2m,weather_code&daily=temperature_2m_min,temperature_2m_max,precipitation_"
                           "probability_max&forecast_days=1&timezone=America%2FSao_Paulo";
         if (http.begin(client, url) && http.GET() == HTTP_CODE_OK)
         {
@@ -78,6 +79,12 @@ class ClimaManager
             if (pos >= 0)
             {
                 String block = payload.substring(pos, payload.indexOf('}', pos) + 1);
+                float humidity;
+                if (number(block, "relative_humidity_2m", false, humidity) &&
+                    humidity >= 0 && humidity <= 100) {
+                    next.umidade = humidity;
+                    humidityOk = true;
+                }
                 if (number(block, "temperature_2m", false, t) &&
                     number(block, "weather_code", false, w))
                 {
@@ -117,7 +124,7 @@ class ClimaManager
             }
         }
         http.end();
-        next.ultimaFalhou = !(currentOk && dailyOk);
+        next.ultimaFalhou = !(currentOk && dailyOk && humidityOk);
         portENTER_CRITICAL(&mux);
         data = next;
         busy = false;
@@ -147,8 +154,7 @@ class ClimaManager
             return;
         uint32_t now = millis();
         portENTER_CRITICAL(&mux);
-        uint32_t interval =
-            (data.sincronizado && data.previsaoValida && !data.ultimaFalhou) ? 900000 : 60000;
+        constexpr uint32_t interval = 15UL * 60UL * 1000UL;
         bool start = !pausedForOta && !busy && (force || attempted == 0 || now - attempted >= interval);
         if (start)
         {

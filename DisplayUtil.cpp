@@ -2,6 +2,7 @@
 #include "ClimaManager.h"
 #include <M5Unified.h>
 #include <WiFi.h>
+#include <math.h>
 
 namespace {
 M5Canvas& pageBuffer() {
@@ -38,10 +39,32 @@ void DisplayUtil::page(const String& title, const String& body) {
  }
  frame.pushSprite(0, 0);
 }
+void DisplayUtil::showOtaProgress(uint8_t percent, const String& status) {
+ if (!ready_) return;
+ percent = min(uint8_t(100), percent);
+ auto& frame = pageBuffer();
+ frame.fillScreen(0); frame.setTextWrap(false);
+ frame.setTextColor(0x07FF, 0); frame.setTextSize(1.25f);
+ const String title = "Atualizacao OTA";
+ frame.setCursor((128 - int(frame.textWidth(title))) / 2, 7); frame.print(title);
+ frame.drawFastHLine(5, 25, 118, 0x07FF);
+ frame.setTextColor(0xFFFF, 0); frame.setTextSize(3);
+ const String value = String(percent) + "%";
+ frame.setCursor((128 - int(frame.textWidth(value))) / 2, 38); frame.print(value);
+ frame.drawRoundRect(8, 73, 112, 18, 4, 0x07FF);
+ const int width = uint32_t(percent) * 106 / 100;
+ if (width) frame.fillRect(11, 76, width, 12, 0x07FF);
+ frame.setTextSize(1.25f);
+ frame.setCursor(max(0, (128 - int(frame.textWidth(status))) / 2), 104);
+ frame.print(status);
+ frame.pushSprite(0, 0);
+}
+
 void DisplayUtil::begin() {
  auto cfg=M5.config(); cfg.fallback_board=m5::board_t::board_M5AtomS3R;
- cfg.internal_imu=false; cfg.internal_rtc=false; cfg.internal_mic=false; cfg.internal_spk=false;
+ cfg.internal_imu=true; cfg.internal_rtc=false; cfg.internal_mic=false; cfg.internal_spk=false;
  M5.begin(cfg); ready_=M5.Display.width()==128 && M5.Display.height()==128;
+ Serial.println(M5.Imu.isEnabled() ? "[IMU] Acelerometro pronto: olhos seguem o movimento" : "[IMU] Indisponivel: olhos usam movimento automatico");
  if (ready_) {
    auto& frame = pageBuffer();
    frame.setColorDepth(16);
@@ -52,7 +75,7 @@ void DisplayUtil::begin() {
    frame.setTextWrap(false);
  }
  Serial.printf("[LCD] AtomS3R %dx%d: %s\n",M5.Display.width(),M5.Display.height(),ready_?"OK":"falha: atualize M5Unified e M5GFX");
- M5.Display.setRotation(0); M5.Display.setTextWrap(true); setBacklight(brightness_);
+ M5.Display.setRotation(2); M5.Display.setTextWrap(true); setBacklight(brightness_);
  page("AtomS3R", "Inicializando...\n\nAplicacao: core 1\nClima: core 0");
 }
 void DisplayUtil::setBacklight(uint8_t p) { brightness_=min(uint8_t(100),p); wake(); }
@@ -71,7 +94,7 @@ void DisplayUtil::clear() { lines.clear(); if(ready_){M5.Display.fillScreen(back
 void DisplayUtil::setTextColor(uint16_t c) { textColor=c; if(ready_)M5.Display.setTextColor(c,backgroundColor); }
 void DisplayUtil::setBackgroundColor(uint16_t c) { backgroundColor=c; }
 void DisplayUtil::setTextSize(uint8_t s) { textSize=s; if(ready_)M5.Display.setTextSize(s); }
-void DisplayUtil::setRotation(uint8_t r) { if(ready_)M5.Display.setRotation(r&3); }
+void DisplayUtil::setRotation(uint8_t r) { if(ready_)M5.Display.setRotation(r & 3); }
 void DisplayUtil::showClock(String date) {
  if (!ready_) return;
  auto& frame = pageBuffer(); auto c = ClimaManager::snapshot();
@@ -105,18 +128,61 @@ void DisplayUtil::showForecastPage() { auto c=ClimaManager::snapshot(); page("Po
 void DisplayUtil::desenharOlhosScreensaver() {
  if (!ready_) return;
  static uint32_t lastFrame = 0, nextLook = 0, nextBlink = 0, blinkAt = 0;
+ static uint32_t lastAccelAt = 0;
  static float lookX = 0, lookY = 0;
- static int targetX = 0, targetY = 0;
+ static float targetX = 0, targetY = 0;
+ static float neutralX = 0, neutralY = 0, filteredX = 0, filteredY = 0;
+ static bool referenceReady = false;
  static bool blinking = false;
+ enum Expression : uint8_t { HAPPY, CURIOUS, SURPRISED, SLEEPY };
+ static uint8_t expression = HAPPY;
+ static uint32_t nextExpressionAt = 0, lastSurpriseAt = 0;
+ static float topLids[2] = {}, bottomLids[2] = {};
  const uint32_t now = millis();
  if (now - lastFrame < 33) return;
+ // A new screensaver session uses the current position as its neutral pose.
+ if (now - lastFrame > 250) referenceReady = false;
  lastFrame = now;
- if (!nextLook || int32_t(now - nextLook) >= 0) {
+ float ax = 0, ay = 0, az = 0;
+ bool suddenMotion = false;
+ if (M5.Imu.isEnabled() && M5.Imu.getAccel(&ax, &ay, &az) &&
+     isfinite(ax) && isfinite(ay) && isfinite(az)) {
+   const float acceleration = sqrtf(ax * ax + ay * ay + az * az);
+   suddenMotion = acceleration > 1.65f || acceleration < 0.35f;
+   // M5Unified corrects sensor mounting axes; rotate them into LCD coordinates.
+   float x = ax, y = -ay;
+   switch (M5.Display.getRotation() & 3) {
+     case 1: x = ay; y = ax; break;
+     case 2: x = -ax; y = ay; break;
+     case 3: x = -ay; y = -ax; break;
+   }
+   if (!referenceReady) {
+     neutralX = filteredX = x; neutralY = filteredY = y;
+     referenceReady = true;
+   }
+   filteredX += (x - filteredX) * 0.18f;
+   filteredY += (y - filteredY) * 0.18f;
+   const float dx = filteredX - neutralX, dy = filteredY - neutralY;
+   // Ignore small vibrations, and keep both irises inside their eye outlines.
+   targetX = fabsf(dx) < 0.03f ? 0 : constrain(dx * 12.0f, -6.0f, 6.0f);
+   targetY = fabsf(dy) < 0.03f ? 0 : constrain(dy * 10.0f, -5.0f, 5.0f);
+   lastAccelAt = now;
+ }
+ // Retain automatic motion only when no valid accelerometer data is available.
+ if ((!referenceReady || now - lastAccelAt > 1000) &&
+     (!nextLook || int32_t(now - nextLook) >= 0)) {
    targetX = random(-6, 7); targetY = random(-5, 6);
    nextLook = now + random(900, 2400);
  }
  lookX += (targetX - lookX) * 0.12f;
  lookY += (targetY - lookY) * 0.12f;
+ if (suddenMotion && now - lastSurpriseAt >= 4000) {
+   expression = SURPRISED; lastSurpriseAt = now; nextExpressionAt = now + 2000;
+ } else if (!nextExpressionAt || int32_t(now - nextExpressionAt) >= 0) {
+   // Pick a different expression without blocking the network or the animation.
+   if (nextExpressionAt) expression = (expression + 1 + random(3)) % 4;
+   nextExpressionAt = now + random(3500, 6500);
+ }
  if (!nextBlink) nextBlink = now + random(2000, 5000);
  if (!blinking && int32_t(now - nextBlink) >= 0) { blinking = true; blinkAt = now; }
  int lid = 0;
@@ -129,18 +195,43 @@ void DisplayUtil::desenharOlhosScreensaver() {
  frame.fillScreen(0);
  for (int eye = 0; eye < 2; ++eye) {
    const int x = eye ? 70 : 12;
-   const int cx = x + 23 + int(lookX), cy = 65 + int(lookY);
+   const int cx = x + 23 + int(lookX), cy = 53 + int(lookY);
    const uint16_t iris = 0x07FF;
-   frame.fillRoundRect(x, 40, 46, 50, 16, 0xDFFF);
+   frame.fillRoundRect(x, 28, 46, 50, 16, 0xDFFF);
    frame.fillCircle(cx, cy, 16, iris);
    frame.drawCircle(cx, cy, 13, 0x041F);
-   frame.fillCircle(cx, cy, 8, 0);
+   frame.fillCircle(cx, cy, expression == SURPRISED ? 6 : 8, 0);
    frame.fillCircle(cx - 4, cy - 5, 3, 0xFFFF);
    frame.fillCircle(cx + 4, cy + 4, 1, 0xFFFF);
-   // Eyelids are composed in the same buffer, keeping blinking free of screen flashes.
-   if (lid) {
-     frame.fillRect(x, 40, 46, lid, 0);
-     frame.fillRect(x, 90 - lid, 46, lid, 0);
+   const float targetTop = expression == SLEEPY ? 19 : expression == CURIOUS ? (eye ? 12 : 2) : 0;
+   const float targetBottom = expression == HAPPY ? 6 : expression == SLEEPY ? 10 : 0;
+   topLids[eye] += (targetTop - topLids[eye]) * 0.18f;
+   bottomLids[eye] += (targetBottom - bottomLids[eye]) * 0.18f;
+   const int top = max(lid, int(topLids[eye])), bottom = max(lid, int(bottomLids[eye]));
+   if (top) frame.fillRect(x, 28, 46, top, 0);
+   if (bottom) frame.fillRect(x, 78 - bottom, 46, bottom, 0);
+   // Eyebrows reinforce the expression without touching the moving eyes.
+   const int browY = expression == SURPRISED ? 13 : expression == SLEEPY ? 23 : 19;
+   const int tilt = expression == CURIOUS ? (eye ? 5 : -5) : 0;
+   for (int stroke = 0; stroke < 2; ++stroke)
+     frame.drawLine(x + 8, browY + stroke, x + 37, browY + tilt + stroke, iris);
+ }
+ // Mouth sits below the eyes, entirely inside the 128x128 canvas.
+ const int mouthX = 64 + int(lookX * 0.4f);
+ if (expression == SURPRISED) {
+   frame.fillRoundRect(mouthX - 7, 94, 14, 21, 7, 0x07FF);
+   frame.fillRoundRect(mouthX - 4, 97, 8, 15, 4, 0);
+ } else if (expression == SLEEPY) {
+   frame.fillRoundRect(mouthX - 11, 103, 22, 4, 2, 0x07FF);
+ } else if (expression == CURIOUS) {
+   for (int stroke = 0; stroke < 3; ++stroke)
+     frame.drawLine(mouthX - 10, 108 + stroke, mouthX + 10, 103 + stroke, 0x07FF);
+ } else {
+   // A curved smile, with a tiny breathing motion.
+   const int bounce = int(sinf(now * 0.002f) * 1.5f);
+   for (int dx = -17; dx <= 17; ++dx) {
+     const int y = 102 + bounce + (289 - dx * dx) * 10 / 289;
+     frame.fillCircle(mouthX + dx, y, 1, 0x07FF);
    }
  }
  frame.pushSprite(0, 0);

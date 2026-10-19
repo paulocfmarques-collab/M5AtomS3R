@@ -49,6 +49,7 @@ public:
     void clearConsole(){clear();}
     void showMonitorPage();
     void showForecastPage();
+    void showOtaProgress(uint8_t percent, const String& status);
     void clear();
     void setTextColor(uint16_t color);
     void setBackgroundColor(uint16_t color);

@@ -29,6 +29,14 @@ bool sdDisponivel = false;
 enum { PAGE_CLOCK = 0, PAGE_NTP_1, PAGE_NTP_2, PAGE_NET_1, PAGE_NET_2, PAGE_SYS, PAGE_WIFI, PAGE_SD, PAGE_MONITOR, PAGE_FORECAST, PAGE_COUNT };
 uint32_t tempoUltimoComando = 0; // Monitor de ociosidade
 
+uint8_t nextDisplayPage(uint8_t current)
+{
+  // Skip duplicate panels and the SD placeholder on this board.
+  do { current = (current + 1) % PAGE_COUNT; }
+  while (current == PAGE_NTP_2 || current == PAGE_NET_2 || current == PAGE_SD);
+  return current;
+}
+
 void applicationTask(void*);
 void applicationLoop();
 
@@ -42,7 +50,6 @@ void setup()
   // Inicializa o display AtomS3R e o adaptador sem SD.
   sdDisponivel = commandProcessor.begin();
   display.begin();
-  display.setRotation(1); 
   display.clear();
   display.println("Sistema Inicializando...");
   delay(200); 
@@ -71,6 +78,8 @@ void applicationLoop()
   static int buttonState = HIGH;
   static uint32_t lastDebounceTime = 0;
   static uint32_t buttonPressedAt = 0;
+  static uint32_t lastNavigationAt = 0;
+  static bool returnToClockArmed = false;
   static uint8_t holdStage = 0;
   static int8_t lastLedState = -1;
   String comando;
@@ -100,12 +109,15 @@ void applicationLoop()
     {
       display.wake();
       buttonPressedAt = millis();
+      lastNavigationAt = buttonPressedAt;
       holdStage = 0;
     }
     else if (holdStage == 0)
     {
       Serial.printf("[STATUS] Core=%d WiFi=%s Heap=%u\n", xPortGetCoreID(), WiFi.status() == WL_CONNECTED ? "OK" : "offline", ESP.getFreeHeap());
-      currentPage = (currentPage + 1) % PAGE_COUNT;
+      currentPage = nextDisplayPage(currentPage);
+      lastNavigationAt = millis();
+      returnToClockArmed = currentPage != PAGE_CLOCK;
       consoleVisible = false;
       lastFrame = millis() - 1000;
       tempoUltimoComando = millis();
@@ -127,6 +139,7 @@ void applicationLoop()
 
   if (buttonState == LOW)
   {
+    lastNavigationAt = millis();
     uint32_t held = millis() - buttonPressedAt;
     if (held >= 10000 && holdStage < 2)
     {
@@ -168,7 +181,6 @@ void applicationLoop()
   if (serialCommand || gateway.receiveCommand(comando))
   {
     display.wake();
-    display.setRotation(0);
     commandProcessor.executeCommand(comando, serialCommand);
     sdDisponivel = commandProcessor.sdReady();
     consoleVisible = true; consoleUntil = millis() + 10000;
@@ -177,8 +189,16 @@ void applicationLoop()
 
   int request = display.takePageRequest();
   if (request != -1) {
-    currentPage = request == -2 ? (currentPage + 1) % PAGE_COUNT : request % PAGE_COUNT;
+    currentPage = request == -2 ? nextDisplayPage(currentPage) : request % PAGE_COUNT;
+    lastNavigationAt = millis();
+    returnToClockArmed = currentPage != PAGE_CLOCK;
     consoleVisible = false; lastFrame = millis() - 1000;
+  }
+  if (returnToClockArmed && buttonState != LOW && millis() - lastNavigationAt >= 20000UL) {
+    currentPage = PAGE_CLOCK;
+    returnToClockArmed = false;
+    consoleVisible = false;
+    lastFrame = millis() - 1000;
   }
   if (consoleVisible && int32_t(millis() - consoleUntil) >= 0) consoleVisible = false;
   const bool idle = buttonState != LOW && !consoleVisible && display.idleFor(60000);

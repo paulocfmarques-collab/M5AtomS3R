@@ -89,6 +89,25 @@ void MetricsService::load()
     if (!countersOk) Serial.println("[METRICS] Contadores persistentes indisponiveis.");
 }
 
+bool MetricsService::resetCounters()
+{
+    Preferences prefs;
+    if (!prefs.begin("telemetry", false))
+    {
+        countersOk = false;
+        return false;
+    }
+    BootRecord zero{1, 0, 0};
+    const bool ok = prefs.putBytes("boots", &zero, sizeof(zero)) == sizeof(zero);
+    prefs.end();
+    countersOk = ok;
+    if (ok)
+    {
+        boots = zero;
+    }
+    return ok;
+}
+
 void MetricsService::begin(WebServer& web, SDUtil& sd)
 {
     if (initialized) return;
@@ -224,7 +243,9 @@ void MetricsService::show(int status, const String& notice)
          escapeHtml(ip) + ":" + String(settings.port) + "/metrics' target='_blank' rel='noopener'>Ver metricas</a></section>";
     h += F("<section class='card section'><h2>Fontes e limites</h2>"
            "<p>Sistema, Wi-Fi, CPU, tarefas, memoria, flash, botao GPIO41, sem backlight, HTTP e SD. "
-           "Temperatura interna nao e ambiente. Idade do clima so aparece apos dados atuais validos.</p>"
+           "Temperatura interna nao e ambiente. Temperatura e umidade relativa de Porto Alegre "
+           "vem do Open-Meteo, com source=open_meteo e location=porto_alegre. "
+           "As series de clima so aparecem apos dados validos.</p>"
            "<p>Energia, bateria, sensores ambientais locais, reles, ADC e MQTT nao estao integrados; "
            "essas series sao omitidas. SD usa cache atualizado em tarefa a cada 30 segundos, sem ler por scrape.</p>"
            "<p>Boot/watchdog persistem; HTTP, desconexoes e operacoes SD reiniciam no boot. "
@@ -323,6 +344,11 @@ String MetricsService::exposition() const
     const float temperature = temperatureRead();
     if (isfinite(temperature)) sample("esp_cpu_temperature_celsius", String(temperature, 2));
     const auto weather = ClimaManager::snapshot();
+    const String weatherLabels = "source=\"open_meteo\",location=\"porto_alegre\"";
+    if (weather.sincronizado && isfinite(weather.temperatura))
+        sample("sensor_temperature_celsius", String(weather.temperatura, 2), weatherLabels);
+    if (isfinite(weather.umidade) && weather.umidade >= 0 && weather.umidade <= 100)
+        sample("sensor_humidity_percent", String(weather.umidade, 2), weatherLabels);
     if (weather.sincronizado)
         sample("esp_weather_data_age_seconds", String((esp_timer_get_time() - weather.ultimaAtualizacaoUs) / 1000000.0, 3));
     sample("esp_task_count", String(uxTaskGetNumberOfTasks()));

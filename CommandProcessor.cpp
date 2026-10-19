@@ -116,6 +116,8 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
                   "flash_info\n"
                   "health\n"
                   "selftest\n"
+                  "name\n"
+                  "reset_counters\n"
                   "[REDE]\n"
                   "wifi_add:SSID:senha\n"
                   "wifi_list\n"
@@ -124,6 +126,7 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
                   "[TELA]\n"
                   "tela:0..9\n"
                   "tela_next\n"
+                  "rotacao:0|90|180|270\n"
                   "brilho:0..100\n"
                   "tela_on\n"
                   "tela_off\n"
@@ -167,6 +170,12 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
                   "X = fuso UTC (ex.: -3)\n";
         answerAll(message);
     }
+    else if (command == "reset_counters")
+        answerAll(gateway_.resetCounters()
+                      ? "Contadores NVS de boot/watchdog zerados.\n"
+                      : "Erro ao zerar contadores NVS.\n");
+    else if (command == "name")
+        answerAll(gateway_.getDeviceName() + "\n", false);
     else if (command == "wifi_list")
         answerAll(gateway_.listarSSIDs(), false);
     else if (command.startsWith("wifi_add:"))
@@ -204,6 +213,19 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
         }
         else
             answerAll("Uso: tela:0..9\n", false);
+    }
+    else if (name == "rotacao")
+    {
+        const int colon = command.indexOf(':');
+        const String angle = colon < 0 ? String("") : command.substring(colon + 1);
+        if (angle != "0" && angle != "90" && angle != "180" && angle != "270") {
+            answerAll("Uso: rotacao:0|90|180|270\n", false);
+            return;
+        }
+        display_.setRotation(angle.toInt() / 90);
+        display_.wake();
+        display_.redraw();
+        answerAll("Rotacao do display: " + angle + " graus\n", false);
     }
     else if (command.startsWith("brilho:"))
     {

@@ -20,6 +20,7 @@ public:
 
     void begin(WebServer& panel, SDUtil& storage);
     void process();
+    bool resetCounters();
     static bool validHost(const String& host);
     static bool parseNumber(const String& text, uint16_t minimum, uint16_t maximum, uint16_t& value);
 
