@@ -73,7 +73,7 @@ class ESP32Gateway
     IPAddress udpReplyIP;
     uint16_t udpReplyPort = 0;
     bool udpReady = false;
-    uint32_t udpReceived = 0, udpSent = 0, udpSendErrors = 0, udpRecoveries = 0;
+    uint64_t udpReceived = 0, udpSent = 0, udpReplies = 0, udpSendErrors = 0, udpRecoveries = 0;
     Preferences prefs;
     NetworkMonitor telemetry;
     static const int MAX_REDES = 5;
@@ -419,6 +419,7 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
     {
         uint32_t now = millis();
         telemetry.update();
+        metrics.setUdpStatus(udpReady, udpReceived, udpReplies, udpSendErrors);
         server.handleClient();
         metrics.process();
         if (historyEnabled &&
@@ -587,7 +588,7 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
 
     void responderUDP(const String& s)
     {
-        if (!udpReplyIP || !udpReplyPort)
+        if (!udpReplyIP || !udpReplyPort || s.isEmpty())
             return;
         // Explicit chunks avoid NetworkUDP's unchecked implicit flush above 1460 bytes.
         constexpr size_t chunkSize = 1200;
@@ -614,6 +615,7 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
             if (!sent) return;
             ++udpSent;
         }
+        ++udpReplies; // Count a logical response only after every block was sent.
     }
 
     void responderUDPPrintf(const char* format, ...)
@@ -732,6 +734,8 @@ document.getElementById('networks').addEventListener('submit',function(e){let er
         s += "\nPings: " + String(m.attempts) + " | Sem resposta: " + String(m.failures) + "\n";
         s += "UDP RX: " + String(udpReceived) + " | TX blocos: " + String(udpSent) +
              " | Falhas TX: " + String(udpSendErrors) + " | Recuperacoes: " + String(udpRecoveries) + "\n";
+        s += "UDP porta aberta: " + String(udpReady ? "SIM" : "NAO") +
+             " | Respostas completas: " + String(udpReplies) + "\n";
         for (const auto& e : m.events)
             if (e.length())
                 s += e + "\n";

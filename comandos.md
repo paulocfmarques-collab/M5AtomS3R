@@ -25,6 +25,9 @@ tela:0
 clima_sync
 ```
 
+`help` responde com `COMANDOS` e um item por linha. Os argumentos aparecem
+após `:`; descrições ficam neste guia, fora da saída parseável.
+
 ## Sistema e diagnóstico
 
 | Comando | Função |

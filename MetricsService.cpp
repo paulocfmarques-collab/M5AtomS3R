@@ -339,6 +339,10 @@ String MetricsService::exposition() const
         if (esp_wifi_get_max_tx_power(&power) == ESP_OK) sample("esp_wifi_tx_power", String(power / 4.0f, 2));
     }
     sample("esp_wifi_disconnect_count", String(disconnects.load()));
+    sample("esp_udp_listener_up", udp.listenerUp ? "1" : "0");
+    sample("esp_udp_packets_received_total", String(udp.received), "", "counter");
+    sample("esp_udp_replies_sent_total", String(udp.replies), "", "counter");
+    sample("esp_udp_send_errors_total", String(udp.sendErrors), "", "counter");
     sample("esp_cpu_frequency_mhz", String(ESP.getCpuFreqMHz()));
     if (isfinite(cpuUsage)) sample("esp_cpu_usage_percent", String(cpuUsage, 3));
     const float temperature = temperatureRead();

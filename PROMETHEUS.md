@@ -1,6 +1,32 @@
-# Clima de Porto Alegre no Prometheus
+# Métricas do AtomS3R no Prometheus
 
 Atualizado em 19/10/2026.
+
+## Monitoramento UDP
+
+As quatro séries abaixo são exportadas mesmo antes do primeiro comando, com o rótulo `device` do exportador. `instance` e `job` são acrescentados pelo Prometheus.
+
+| Métrica | Tipo | Significado |
+| --- | --- | --- |
+| `esp_udp_listener_up` | gauge | 1 quando a última abertura local da porta UDP 4210 teve sucesso e o socket não foi fechado pelo firmware; 0 quando está fechado ou a abertura falhou. Não comprova conectividade nem recebimento no cliente. |
+| `esp_udp_packets_received_total` | counter | Datagramas detectados pelo receptor, inclusive entradas recusadas por exceder 255 bytes. |
+| `esp_udp_replies_sent_total` | counter | Respostas completas aceitas pelo envio local. Uma resposta dividida em vários blocos conta apenas uma vez, após sucesso de todos os blocos. |
+| `esp_udp_send_errors_total` | counter | Tentativas locais de envio que falharam na abertura do pacote, escrita ou envio. Uma resposta pode acumular duas falhas se a repetição também falhar. |
+
+Os contadores usam 64 bits, ficam em RAM e zeram ao reiniciar a placa. Reabrir o socket ou reconectar o Wi-Fi não zera os valores. Respostas vazias, sem destino ou interrompidas por falha não incrementam o contador de respostas completas. Envio local bem-sucedido não garante entrega, pois UDP não tem confirmação do destinatário.
+
+Exemplos de consultas:
+
+```promql
+esp_udp_listener_up
+rate(esp_udp_packets_received_total[5m])
+rate(esp_udp_replies_sent_total[5m])
+increase(esp_udp_send_errors_total[5m])
+```
+
+Para conferir, colete as séries, envie `alive` por UDP e colete novamente: RX e respostas completas devem aumentar em uma unidade, salvo outro tráfego concorrente. Erros de envio só aumentam diante de falha real do envio local. Testes na placa e no servidor ficam com o usuário.
+
+## Clima de Porto Alegre
 
 O endpoint `/metrics` exporta os dados do cache do Open-Meteo, atualizado a cada 15 minutos. O scrape não consulta a API de clima. Use `clima_sync` para solicitar uma atualização antecipada.
 

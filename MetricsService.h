@@ -20,11 +20,20 @@ public:
 
     void begin(WebServer& panel, SDUtil& storage);
     void process();
+    // Updated by the gateway on the same application task before serving scrapes.
+    void setUdpStatus(bool listenerUp, uint64_t received, uint64_t replies, uint64_t sendErrors)
+    {
+        udp = {listenerUp, received, replies, sendErrors};
+    }
     bool resetCounters();
     static bool validHost(const String& host);
     static bool parseNumber(const String& text, uint16_t minimum, uint16_t maximum, uint16_t& value);
 
 private:
+    struct UdpStatus {
+        bool listenerUp = false;
+        uint64_t received = 0, replies = 0, sendErrors = 0;
+    } udp;
     Settings settings{};
     struct BootRecord { uint32_t version, boots, watchdogs; } boots{};
     WebServer* panel = nullptr;

@@ -1,5 +1,20 @@
 # Histórico de alterações — AtomS3R Gateway
 
+## 2026-10-21 — Formato parseável do help
+
+- Padronizada a resposta de `help` com o cabeçalho `COMANDOS` e um comando
+  por linha, sem texto explicativo na lista.
+- Atualizado o guia de comandos.
+
+## 2026-10-19 — Métricas UDP no Prometheus
+
+- Exportado `esp_udp_listener_up` como gauge de abertura local da porta 4210.
+- Exportados `esp_udp_packets_received_total`, `esp_udp_replies_sent_total` e `esp_udp_send_errors_total` como counters.
+- Contador de respostas completas separado do contador de blocos; só incrementa após sucesso de todos os blocos de uma resposta.
+- Contadores UDP ampliados para 64 bits, preservados nas recuperações do socket e zerados no boot.
+- Estado repassado ao exportador pela tarefa principal antes de atender as requisições web, sem abrir sockets durante o scrape.
+- Documentação atualizada; compilação e teste físico ficam com o usuário.
+
 ## 2026-10-19 — Temperatura e umidade de Porto Alegre no Prometheus
 
 - Adicionada consulta de `relative_humidity_2m` no Open-Meteo e armazenamento no cache protegido entre núcleos, com validação de 0 a 100%.

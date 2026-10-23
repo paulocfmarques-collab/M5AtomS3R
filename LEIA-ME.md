@@ -85,6 +85,8 @@ A barra avança após pelo menos 5 pontos percentuais e respeita um intervalo m�
 
 ## Validação e documentação
 
+O endpoint Prometheus também exporta `esp_udp_listener_up`, `esp_udp_packets_received_total`, `esp_udp_replies_sent_total` e `esp_udp_send_errors_total`. As definições e consultas estão em [PROMETHEUS.md](PROMETHEUS.md). Respostas completas são contadas separadamente dos blocos UDP.
+
 Para investigar respostas UDP, envie `net_monitor` pelo serial ou consulte o relatório web: os contadores mostram RX, blocos TX, falhas TX e tentativas de recuperação. Falhas de envio também aparecem no serial com o prefixo `[UDP]`, destino e errno. O socket é reaberto após reconexões e recebe uma tentativa de recuperação quando o envio falha. A eficácia no problema de longa duração ainda precisa ser confirmada na placa.
 
 Os fontes e esta documentação passaram por revisão estática. A compilação e os testes físicos das alterações recentes ficam com o usuário. Conferir botão, retorno em 20 segundos, relógio, olhos após 60 segundos, inclinação, RGB, redes, portal e OTA.
