@@ -45,6 +45,7 @@ void setup()
   Serial.begin(115200);
   delay(100); 
   pinMode(USER_BUTTON_PIN, INPUT_PULLUP);
+  ClimaManager::begin(); // Reserve the persistent weather worker before network allocations.
 
   SharedSpi::begin();
   // Inicializa o display AtomS3R e o adaptador sem SD.

@@ -85,6 +85,10 @@ A barra avança após pelo menos 5 pontos percentuais e respeita um intervalo m�
 
 ## Validação e documentação
 
+A tarefa de clima é reservada no boot e reutilizada: os objetos HTTP/TLS e Strings saem do escopo normalmente ao terminar cada consulta. Isso corrige o encerramento anterior, que podia acumular memória ao apagar a própria tarefa antes de executar os destrutores. `clima_status` mostra `Worker reservado`, heap interno livre e maior bloco disponível. Para validar na placa, compare esses valores com a tarefa livre após várias consultas; a memória não deve cair continuamente a cada atualização.
+
+Se o clima ficar antigo, envie `clima_sync`, aguarde cerca de 30 segundos e consulte `clima_status`. O diagnóstico distingue falta de Wi-Fi, tarefa ocupada, pausa OTA, erro HTTPS/HTTP e campos inválidos da resposta. O serial registra cada conclusão com `[CLIMA]`. O intervalo automático permanece em 15 minutos, inclusive após falhas; valores antigos são preservados até uma nova leitura válida.
+
 O endpoint Prometheus também exporta `esp_udp_listener_up`, `esp_udp_packets_received_total`, `esp_udp_replies_sent_total` e `esp_udp_send_errors_total`. As definições e consultas estão em [PROMETHEUS.md](PROMETHEUS.md). Respostas completas são contadas separadamente dos blocos UDP.
 
 Para investigar respostas UDP, envie `net_monitor` pelo serial ou consulte o relatório web: os contadores mostram RX, blocos TX, falhas TX e tentativas de recuperação. Falhas de envio também aparecem no serial com o prefixo `[UDP]`, destino e errno. O socket é reaberto após reconexões e recebe uma tentativa de recuperação quando o envio falha. A eficácia no problema de longa duração ainda precisa ser confirmada na placa.

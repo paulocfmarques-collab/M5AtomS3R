@@ -1,5 +1,23 @@
 # Histórico de alterações — AtomS3R Gateway
 
+## 2026-10-27 — Liberação de memória e tarefa permanente de clima
+
+- Corrigido o encerramento que chamava `vTaskDelete()` com objetos HTTP/TLS e Strings ainda no escopo, impedindo a execução de seus destrutores.
+- Separada a consulta em função com retorno normal; recursos por consulta são destruídos antes de liberar o estado ocupado.
+- Tarefa de clima agora reservada no boot e mantida no núcleo 0, aguardando notificações entre consultas, sem realocar pilha/controle a cada ciclo de 15 minutos.
+- `clima_status` inclui reserva do worker, heap interno livre e maior bloco interno para acompanhar recuperação da memória.
+- `clima_sync` não confirma agendamento quando a consulta é recusada por falta de memória, tarefa ocupada, OTA ou ausência de rede.
+- Revisado o ciclo de vida dos objetos nos fontes. Compilação e teste prolongado de memória na placa ficam com o usuário.
+
+## 2026-10-26 — Diagnóstico de clima desatualizado
+
+- Adicionado `clima_status`, com estado do Wi-Fi, tarefa, pausa OTA, contagem de tentativas/sucessos, idade da tentativa e último resultado HTTP/processamento.
+- `clima_sync` também mostra o diagnóstico; cada consulta concluída gera log `[CLIMA]` no serial.
+- Timeout do handshake TLS explicitado em 10 segundos; timeouts HTTP de conexão e leitura ampliados de 3 para 8 segundos para tolerar conexões lentas.
+- Extração de campos/objetos ajustada para aceitar espaços entre a chave JSON e os dois-pontos, evitando depender de resposta compactada.
+- Intervalo automático mantido em 15 minutos; nenhuma criação de tarefa duplicada quando a consulta anterior ainda está ocupada.
+- O relato de 302 minutos sem leitura válida não permite identificar sozinho a causa no dispositivo; o novo diagnóstico permite diferenciar os caminhos de falha. Compilação e teste na placa ficam com o usuário.
+
 ## 2026-10-21 — Formato parseável do help
 
 - Padronizada a resposta de `help` com o cabeçalho `COMANDOS` e um comando

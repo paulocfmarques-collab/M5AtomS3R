@@ -162,8 +162,11 @@ ou `led_rgb:R:G:B`; não há comando separado de retorno ao indicador Wi-Fi.
 | --- | --- |
 | `clima` | Temperatura, condição e código WMO do cache atual. |
 | `clima_age` | Tempo desde a última atualização válida. |
+| `clima_status` | Diagnóstico de Wi-Fi, tarefa ocupada, pausa OTA, tentativas, sucessos, código HTTP e resultado da última consulta. |
 | `previsao` | Data, mínima, máxima, chance de chuva e idade da previsão diária. |
 | `clima_sync` | Solicita uma consulta em segundo plano, se houver Wi-Fi. |
+
+`clima_status` também informa se a tarefa permanente está reservada, o heap interno livre e o maior bloco livre. Compare os valores após consultas concluídas, com a tarefa livre. A consulta reutiliza a tarefa criada no boot; `clima_sync` informa quando não consegue agendar, em vez de confirmar uma solicitação que falhou.
 
 Os dados são do Open-Meteo para **Porto Alegre**, herdados do projeto de origem. A primeira consulta ocorre assim que houver Wi-Fi; as consultas automáticas seguintes ocorrem a cada **15 minutos**, inclusive após falha, contados desde a última tentativa. Sem Wi-Fi ou durante OTA, a consulta aguarda a disponibilidade do serviço. `clima_sync` permite antecipar uma consulta e confirma a solicitação, não a conclusão. Consulte `clima_age` e `previsao` para verificar a atualização; `clima` isoladamente não comprova que o cache já foi sincronizado.
 

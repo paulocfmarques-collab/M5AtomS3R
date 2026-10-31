@@ -161,6 +161,7 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
                   "sd_test\n"
                   "clima\n"
                   "clima_age\n"
+                  "clima_status\n"
                   "previsao\n"
                   "clima_sync\n";
         answerAll(message);
@@ -270,10 +271,11 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
     }
     else if (command == "clima_sync")
     {
-        ClimaManager::atualizar(true);
-        answerAll(WiFi.status() == WL_CONNECTED
+        const bool scheduled = ClimaManager::atualizar(true);
+        answerAll(scheduled
                       ? "Consulta de clima solicitada em segundo plano. Use clima/previsao.\n"
-                      : "Sem Wi-Fi; consulta indisponivel.\n");
+                      : "Consulta nao iniciada. Verifique o diagnostico abaixo.\n");
+        answerAll(ClimaManager::status(), false);
     }
 
     else if (command == "info")
@@ -720,6 +722,10 @@ void CommandProcessor::executeCommand(String command, bool fromSerial)
                   "=================\n";
 
         answerAll(message);
+    }
+    else if (command == "clima_status")
+    {
+        answerAll(ClimaManager::status(), false);
     }
     else if (command == "clima_age")
     {
